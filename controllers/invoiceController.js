@@ -143,24 +143,6 @@ const downloadInvoicePDF = async (req, res) => {
   }
 };
 
-const downloadInvoicePDF = async (req, res) => {
-  try {
-    const invoice = await Invoice.findOne({ _id: req.params.id, user: req.user._id })
-      .populate("client")
-      .populate("user", "name businessName businessEmail businessPhone businessAddress");
-    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
-
-    const pdfBuffer = await generateInvoicePDF(invoice);
-    res.set({
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${invoice.invoiceNumber}.pdf"`,
-    });
-    res.send(pdfBuffer);
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
 const sendInvoice = async (req, res) => {
   try {
     const invoice = await Invoice.findOne({ _id: req.params.id, user: req.user._id })

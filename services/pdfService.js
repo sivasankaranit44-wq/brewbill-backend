@@ -1,13 +1,84 @@
 const puppeteer = require("puppeteer");
 
+/**
+ * Escape HTML to prevent invoice data from breaking the generated HTML.
+ */
+const escapeHTML = (value) => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
+/**
+ * Format currency for Indian Rupees.
+ */
+const formatCurrency = (value) => {
+  const number = Number(value || 0);
+
+  return number.toLocaleString("en-IN", {
+    maximumFractionDigits: 2,
+  });
+};
+
+/**
+ * Format date for India.
+ */
+const formatDate = (date) => {
+  if (!date) {
+    return "";
+  }
+
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "";
+  }
+
+  return parsedDate.toLocaleDateString("en-IN");
+};
+
+/**
+ * Generate invoice PDF.
+ */
 const generateInvoicePDF = async (invoice) => {
-  let browser;
+  let browser = null;
 
   try {
+    console.log("=================================");
+    console.log("PDF SERVICE STARTED");
+    console.log("Invoice ID:", invoice?._id);
+    console.log("Invoice Number:", invoice?.invoiceNumber);
+    console.log("=================================");
+
+    /**
+     * Validate invoice
+     */
+    if (!invoice) {
+      throw new Error("Invoice data is missing");
+    }
+
+    if (!invoice.invoiceNumber) {
+      throw new Error("Invoice number is missing");
+    }
+
+    console.log("Invoice validation passed");
+
+    /**
+     * Launch Puppeteer
+     *
+     * These arguments are important for Render/Linux environments.
+     */
     console.log("Launching Puppeteer...");
 
     browser = await puppeteer.launch({
-      headless: "new",
+      headless: true,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -15,55 +86,201 @@ const generateInvoicePDF = async (invoice) => {
         "--disable-gpu",
         "--no-first-run",
         "--no-zygote",
-        "--single-process",
       ],
     });
 
-    console.log("Puppeteer launched");
+    console.log("Puppeteer launched successfully");
 
+    /**
+     * Create new page
+     */
     const page = await browser.newPage();
 
-    const itemsHTML = (invoice.items || [])
-      .map(
-        (item) => `
+    console.log("New Puppeteer page created");
+
+    /**
+     * Set page size
+     */
+    await page.setViewport({
+      width: 1200,
+      height: 1600,
+      deviceScaleFactor: 1,
+    });
+
+    console.log("Viewport configured");
+
+    /**
+     * Prepare invoice items
+     */
+    const items = Array.isArray(invoice.items)
+      ? invoice.items
+      : [];
+
+    console.log("Invoice items:", items.length);
+
+    const itemsHTML = items
+      .map((item) => {
+        const description = escapeHTML(
+          item.description || ""
+        );
+
+        const quantity = Number(item.quantity || 0);
+
+        const rate = Number(item.rate || 0);
+
+        const amount = Number(item.amount || 0);
+
+        return `
           <tr>
-            <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">
-              ${item.description || ""}
+            <td class="item-description">
+              ${description}
             </td>
 
-            <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">
-              ${Number(item.quantity) || 0}
+            <td class="item-qty">
+              ${quantity}
             </td>
 
-            <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: right;">
-              Rs ${Number(item.rate || 0).toLocaleString("en-IN")}
+            <td class="item-number">
+              Rs ${formatCurrency(rate)}
             </td>
 
-            <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: right;">
-              Rs ${Number(item.amount || 0).toLocaleString("en-IN")}
+            <td class="item-number">
+              Rs ${formatCurrency(amount)}
             </td>
           </tr>
-        `
-      )
+        `;
+      })
       .join("");
 
+    /**
+     * Prepare business information
+     */
+    const businessName = escapeHTML(
+      invoice.user?.businessName || ""
+    );
+
+    const businessEmail = escapeHTML(
+      invoice.user?.businessEmail || ""
+    );
+
+    const businessPhone = escapeHTML(
+      invoice.user?.businessPhone || ""
+    );
+
+    const businessAddress = escapeHTML(
+      invoice.user?.businessAddress || ""
+    );
+
+    /**
+     * Prepare client information
+     */
+    const clientName = escapeHTML(
+      invoice.client?.name || ""
+    );
+
+    const clientCompany = escapeHTML(
+      invoice.client?.company || ""
+    );
+
+    const clientEmail = escapeHTML(
+      invoice.client?.email || ""
+    );
+
+    const clientPhone = escapeHTML(
+      invoice.client?.phone || ""
+    );
+
+    const clientAddress = escapeHTML(
+      invoice.client?.address || ""
+    );
+
+    const clientGSTIN = escapeHTML(
+      invoice.client?.gstin || ""
+    );
+
+    /**
+     * Prepare invoice information
+     */
+    const invoiceNumber = escapeHTML(
+      invoice.invoiceNumber
+    );
+
+    const status = escapeHTML(
+      invoice.status || "Draft"
+    );
+
+    const invoiceDate = formatDate(
+      invoice.invoiceDate
+    );
+
+    const dueDate = formatDate(
+      invoice.dueDate
+    );
+
+    const subtotal = formatCurrency(
+      invoice.subtotal
+    );
+
+    const taxRate = Number(
+      invoice.taxRate || 0
+    );
+
+    const taxAmount = formatCurrency(
+      invoice.taxAmount
+    );
+
+    const discount = Number(
+      invoice.discount || 0
+    );
+
+    const total = formatCurrency(
+      invoice.total
+    );
+
+    const notes = escapeHTML(
+      invoice.notes || ""
+    );
+
+    /**
+     * Build HTML
+     */
     const html = `
       <!DOCTYPE html>
 
       <html>
         <head>
+
           <meta charset="UTF-8" />
 
+          <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0"
+          />
+
           <style>
+
+            * {
+              box-sizing: border-box;
+            }
+
+            html,
             body {
-              font-family: Arial, sans-serif;
+              margin: 0;
+              padding: 0;
+              background: #ffffff;
+            }
+
+            body {
+              font-family: Arial, Helvetica, sans-serif;
               padding: 40px;
               color: #1f2937;
+              font-size: 14px;
             }
 
             .header {
               display: flex;
               justify-content: space-between;
+              align-items: flex-start;
               margin-bottom: 40px;
             }
 
@@ -73,10 +290,34 @@ const generateInvoicePDF = async (invoice) => {
               color: #1e40af;
             }
 
+            .business-info {
+              font-size: 13px;
+              color: #6b7280;
+              margin-top: 4px;
+            }
+
             .invoice-title {
               font-size: 36px;
               font-weight: bold;
               color: #6b7280;
+            }
+
+            .invoice-number {
+              font-size: 14px;
+              color: #1e40af;
+              font-weight: bold;
+              margin-top: 4px;
+            }
+
+            .status-badge {
+              display: inline-block;
+              margin-top: 8px;
+              padding: 4px 12px;
+              border-radius: 20px;
+              font-size: 12px;
+              font-weight: bold;
+              background: #dcfce7;
+              color: #16a34a;
             }
 
             .info-grid {
@@ -90,13 +331,24 @@ const generateInvoicePDF = async (invoice) => {
               font-size: 12px;
               color: #6b7280;
               text-transform: uppercase;
-              margin-bottom: 4px;
+              margin-bottom: 5px;
             }
 
             .value {
               font-size: 14px;
               color: #1f2937;
               font-weight: 500;
+              margin-bottom: 4px;
+            }
+
+            .secondary {
+              font-size: 13px;
+              color: #6b7280;
+              margin-bottom: 3px;
+            }
+
+            .right {
+              text-align: right;
             }
 
             table {
@@ -107,13 +359,32 @@ const generateInvoicePDF = async (invoice) => {
 
             thead {
               background: #1e40af;
-              color: white;
+              color: #ffffff;
             }
 
             thead th {
               padding: 12px 10px;
-              text-align: left;
               font-size: 13px;
+              font-weight: bold;
+              text-align: left;
+            }
+
+            tbody td {
+              padding: 10px;
+              border-bottom: 1px solid #e5e7eb;
+              font-size: 13px;
+            }
+
+            .item-description {
+              text-align: left;
+            }
+
+            .item-qty {
+              text-align: center;
+            }
+
+            .item-number {
+              text-align: right;
             }
 
             .totals {
@@ -139,16 +410,6 @@ const generateInvoicePDF = async (invoice) => {
               border-top: 2px solid #1e40af;
             }
 
-            .status-badge {
-              display: inline-block;
-              padding: 4px 12px;
-              border-radius: 20px;
-              font-size: 12px;
-              font-weight: bold;
-              background: #dcfce7;
-              color: #16a34a;
-            }
-
             .notes {
               margin-top: 30px;
               padding: 16px;
@@ -164,51 +425,69 @@ const generateInvoicePDF = async (invoice) => {
               font-size: 12px;
               color: #9ca3af;
             }
+
           </style>
+
         </head>
 
         <body>
 
+          <!-- HEADER -->
+
           <div class="header">
 
             <div>
+
               <div class="brand">
                 Brew Invoice
               </div>
 
-              <div style="font-size: 13px; color: #6b7280; margin-top: 4px;">
-                ${invoice.user?.businessName || ""}
-              </div>
+              ${
+                businessName
+                  ? `<div class="business-info">${businessName}</div>`
+                  : ""
+              }
 
-              <div style="font-size: 13px; color: #6b7280;">
-                ${invoice.user?.businessEmail || ""}
-              </div>
+              ${
+                businessEmail
+                  ? `<div class="business-info">${businessEmail}</div>`
+                  : ""
+              }
 
-              <div style="font-size: 13px; color: #6b7280;">
-                ${invoice.user?.businessPhone || ""}
-              </div>
+              ${
+                businessPhone
+                  ? `<div class="business-info">${businessPhone}</div>`
+                  : ""
+              }
+
+              ${
+                businessAddress
+                  ? `<div class="business-info">${businessAddress}</div>`
+                  : ""
+              }
+
             </div>
 
-            <div style="text-align: right;">
+            <div class="right">
 
               <div class="invoice-title">
                 INVOICE
               </div>
 
-              <div style="font-size: 14px; color: #1e40af; font-weight: bold;">
-                ${invoice.invoiceNumber || ""}
+              <div class="invoice-number">
+                ${invoiceNumber}
               </div>
 
-              <div style="margin-top: 8px;">
-                <span class="status-badge">
-                  ${invoice.status || "Draft"}
-                </span>
-              </div>
+              <span class="status-badge">
+                ${status}
+              </span>
 
             </div>
 
           </div>
 
+
+          <!-- CLIENT + DATE -->
 
           <div class="info-grid">
 
@@ -218,63 +497,67 @@ const generateInvoicePDF = async (invoice) => {
                 Bill To
               </div>
 
-              <div class="value">
-                ${invoice.client?.name || ""}
-              </div>
-
-              <div style="font-size: 13px; color: #6b7280;">
-                ${invoice.client?.company || ""}
-              </div>
-
-              <div style="font-size: 13px; color: #6b7280;">
-                ${invoice.client?.email || ""}
-              </div>
-
-              <div style="font-size: 13px; color: #6b7280;">
-                ${invoice.client?.phone || ""}
-              </div>
-
-              <div style="font-size: 13px; color: #6b7280;">
-                ${invoice.client?.address || ""}
-              </div>
+              ${
+                clientName
+                  ? `<div class="value">${clientName}</div>`
+                  : ""
+              }
 
               ${
-                invoice.client?.gstin
-                  ? `
-                    <div style="font-size: 12px; color: #9ca3af;">
-                      GSTIN: ${invoice.client.gstin}
-                    </div>
-                  `
+                clientCompany
+                  ? `<div class="secondary">${clientCompany}</div>`
+                  : ""
+              }
+
+              ${
+                clientEmail
+                  ? `<div class="secondary">${clientEmail}</div>`
+                  : ""
+              }
+
+              ${
+                clientPhone
+                  ? `<div class="secondary">${clientPhone}</div>`
+                  : ""
+              }
+
+              ${
+                clientAddress
+                  ? `<div class="secondary">${clientAddress}</div>`
+                  : ""
+              }
+
+              ${
+                clientGSTIN
+                  ? `<div class="secondary">GSTIN: ${clientGSTIN}</div>`
                   : ""
               }
 
             </div>
 
 
-            <div style="text-align: right;">
+            <div class="right">
 
               <div class="label">
                 Invoice Date
               </div>
 
               <div class="value">
-                ${
-                  invoice.invoiceDate
-                    ? new Date(invoice.invoiceDate).toLocaleDateString("en-IN")
-                    : ""
-                }
+                ${invoiceDate}
               </div>
 
-              <div style="margin-top: 12px;" class="label">
+              <div
+                class="label"
+                style="margin-top: 12px;"
+              >
                 Due Date
               </div>
 
-              <div class="value" style="color: #dc2626;">
-                ${
-                  invoice.dueDate
-                    ? new Date(invoice.dueDate).toLocaleDateString("en-IN")
-                    : ""
-                }
+              <div
+                class="value"
+                style="color: #dc2626;"
+              >
+                ${dueDate}
               </div>
 
             </div>
@@ -282,66 +565,109 @@ const generateInvoicePDF = async (invoice) => {
           </div>
 
 
+          <!-- ITEMS -->
+
           <table>
 
             <thead>
 
               <tr>
-                <th>Description</th>
 
-                <th style="text-align: center;">
+                <th>
+                  Description
+                </th>
+
+                <th
+                  style="text-align: center;"
+                >
                   Qty
                 </th>
 
-                <th style="text-align: right;">
+                <th
+                  style="text-align: right;"
+                >
                   Rate
                 </th>
 
-                <th style="text-align: right;">
+                <th
+                  style="text-align: right;"
+                >
                   Amount
                 </th>
+
               </tr>
 
             </thead>
 
             <tbody>
-              ${itemsHTML}
+
+              ${
+                itemsHTML ||
+                `
+                  <tr>
+                    <td
+                      colspan="4"
+                      style="text-align: center; padding: 20px;"
+                    >
+                      No items
+                    </td>
+                  </tr>
+                `
+              }
+
             </tbody>
 
           </table>
 
 
+          <!-- TOTALS -->
+
           <div class="totals">
 
             <div class="total-row">
-              <span>Subtotal</span>
+
               <span>
-                Rs ${Number(invoice.subtotal || 0).toLocaleString("en-IN")}
+                Subtotal
               </span>
+
+              <span>
+                Rs ${subtotal}
+              </span>
+
             </div>
+
 
             <div class="total-row">
+
               <span>
-                Tax (${Number(invoice.taxRate || 0)}%)
+                Tax (${taxRate}%)
               </span>
 
               <span>
-                Rs ${Number(invoice.taxAmount || 0).toLocaleString("en-IN")}
+                Rs ${taxAmount}
               </span>
+
             </div>
 
+
             ${
-              Number(invoice.discount || 0) > 0
+              discount > 0
                 ? `
                   <div class="total-row">
-                    <span>Discount</span>
+
                     <span>
-                      - Rs ${Number(invoice.discount).toLocaleString("en-IN")}
+                      Discount
                     </span>
+
+                    <span>
+                      - Rs ${formatCurrency(discount)}
+                    </span>
+
                   </div>
                 `
                 : ""
             }
+
 
             <div class="grand-total">
 
@@ -350,7 +676,7 @@ const generateInvoicePDF = async (invoice) => {
               </span>
 
               <span>
-                Rs ${Number(invoice.total || 0).toLocaleString("en-IN")}
+                Rs ${total}
               </span>
 
             </div>
@@ -358,17 +684,26 @@ const generateInvoicePDF = async (invoice) => {
           </div>
 
 
+          <!-- NOTES -->
+
           ${
-            invoice.notes
+            notes
               ? `
                 <div class="notes">
-                  <strong>Notes:</strong>
-                  ${invoice.notes}
+
+                  <strong>
+                    Notes:
+                  </strong>
+
+                  ${notes}
+
                 </div>
               `
               : ""
           }
 
+
+          <!-- FOOTER -->
 
           <div class="footer">
             Thank you for your business! Brew Invoice
@@ -378,35 +713,134 @@ const generateInvoicePDF = async (invoice) => {
       </html>
     `;
 
-    console.log("Setting PDF HTML...");
+    console.log("HTML generated");
+    console.log("HTML length:", html.length);
+
+    /**
+     * Load HTML into Chromium.
+     */
+    console.log("Setting page content...");
 
     await page.setContent(html, {
-      waitUntil: "networkidle0",
+      waitUntil: "load",
+      timeout: 30000,
     });
 
+    console.log("Page content loaded");
+
+    /**
+     * Small wait to make sure Chromium has finished rendering.
+     */
+    await new Promise((resolve) => {
+      setTimeout(resolve, 500);
+    });
+
+    console.log("Page rendering completed");
+
+    /**
+     * Generate PDF.
+     */
     console.log("Generating PDF...");
 
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
+      preferCSSPageSize: false,
+      margin: {
+        top: "0",
+        right: "0",
+        bottom: "0",
+        left: "0",
+      },
     });
 
-    console.log("PDF buffer generated:", pdfBuffer.length);
+    console.log(
+      "PDF generated successfully"
+    );
+
+    console.log(
+      "PDF buffer type:",
+      Buffer.isBuffer(pdfBuffer)
+    );
+
+    console.log(
+      "PDF buffer size:",
+      pdfBuffer?.length
+    );
+
+    /**
+     * Validate PDF buffer.
+     */
+    if (!Buffer.isBuffer(pdfBuffer)) {
+      throw new Error(
+        "Generated PDF is not a valid Buffer"
+      );
+    }
+
+    if (pdfBuffer.length === 0) {
+      throw new Error(
+        "Generated PDF buffer is empty"
+      );
+    }
+
+    console.log("PDF validation passed");
 
     return pdfBuffer;
 
   } catch (error) {
-    console.error("PDF SERVICE ERROR:", error);
-    console.error("PDF SERVICE MESSAGE:", error.message);
-    console.error("PDF SERVICE STACK:", error.stack);
+
+    console.error(
+      "================================="
+    );
+
+    console.error(
+      "PDF SERVICE ERROR"
+    );
+
+    console.error(
+      "Message:",
+      error.message
+    );
+
+    console.error(
+      "Name:",
+      error.name
+    );
+
+    console.error(
+      "Stack:",
+      error.stack
+    );
+
+    console.error(
+      "================================="
+    );
 
     throw error;
 
   } finally {
+
     if (browser) {
-      await browser.close();
-      console.log("Puppeteer browser closed");
+
+      try {
+
+        await browser.close();
+
+        console.log(
+          "Puppeteer browser closed successfully"
+        );
+
+      } catch (closeError) {
+
+        console.error(
+          "Failed to close Puppeteer browser:",
+          closeError.message
+        );
+
+      }
+
     }
+
   }
 };
 

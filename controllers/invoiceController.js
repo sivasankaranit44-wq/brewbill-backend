@@ -92,13 +92,54 @@ const updateInvoice = async (req, res) => {
   }
 };
 
-const deleteInvoice = async (req, res) => {
+const downloadInvoicePDF = async (req, res) => {
   try {
-    const invoice = await Invoice.findOneAndDelete({ _id: req.params.id, user: req.user._id });
-    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
-    res.json({ success: true, message: "Invoice deleted" });
+    console.log("PDF REQUEST STARTED:", req.params.id);
+
+    const invoice = await Invoice.findOne({
+      _id: req.params.id,
+      user: req.user._id,
+    })
+      .populate("client")
+      .populate(
+        "user",
+        "name businessName businessEmail businessPhone businessAddress"
+      );
+
+    console.log("INVOICE FOUND:", !!invoice);
+
+    if (!invoice) {
+      console.log("INVOICE NOT FOUND");
+      return res.status(404).json({
+        message: "Invoice not found",
+      });
+    }
+
+    console.log("GENERATING PDF...");
+
+    const pdfBuffer = await generateInvoicePDF(invoice);
+
+    console.log("PDF GENERATED:", pdfBuffer.length);
+
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${invoice.invoiceNumber}.pdf"`,
+    });
+
+    res.send(pdfBuffer);
+
+    console.log("PDF SENT SUCCESSFULLY");
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("========== PDF ERROR ==========");
+    console.error(error);
+    console.error("MESSAGE:", error.message);
+    console.error("STACK:", error.stack);
+    console.error("================================");
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 

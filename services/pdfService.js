@@ -740,52 +740,49 @@ const generateInvoicePDF = async (invoice) => {
     /**
      * Generate PDF.
      */
-    console.log("Generating PDF...");
+console.log("Generating PDF...");
 
-    const pdfBuffer = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      preferCSSPageSize: false,
-      margin: {
-        top: "0",
-        right: "0",
-        bottom: "0",
-        left: "0",
-      },
-    });
+const pdfData = await page.pdf({
+  format: "A4",
+  printBackground: true,
+  preferCSSPageSize: false,
+  margin: {
+    top: "0",
+    right: "0",
+    bottom: "0",
+    left: "0",
+  },
+});
 
-    console.log(
-      "PDF generated successfully"
-    );
+const pdfBuffer = Buffer.from(pdfData);
 
-    console.log(
-      "PDF buffer type:",
-      Buffer.isBuffer(pdfBuffer)
-    );
+console.log("PDF generated successfully");
 
-    console.log(
-      "PDF buffer size:",
-      pdfBuffer?.length
-    );
+console.log(
+  "PDF buffer type:",
+  Buffer.isBuffer(pdfBuffer)
+);
 
-    /**
-     * Validate PDF buffer.
-     */
-    if (!Buffer.isBuffer(pdfBuffer)) {
-      throw new Error(
-        "Generated PDF is not a valid Buffer"
-      );
-    }
+console.log(
+  "PDF buffer size:",
+  pdfBuffer.length
+);
 
-    if (pdfBuffer.length === 0) {
-      throw new Error(
-        "Generated PDF buffer is empty"
-      );
-    }
+if (!Buffer.isBuffer(pdfBuffer)) {
+  throw new Error(
+    "Generated PDF is not a valid Buffer"
+  );
+}
 
-    console.log("PDF validation passed");
+if (pdfBuffer.length === 0) {
+  throw new Error(
+    "Generated PDF buffer is empty"
+  );
+}
 
-    return pdfBuffer;
+console.log("PDF validation passed");
+
+return pdfBuffer;
 
   } catch (error) {
 
